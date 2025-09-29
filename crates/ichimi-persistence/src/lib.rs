@@ -1,6 +1,7 @@
+pub mod database;
+pub mod kdl_serde;
 pub mod persistence;
 pub mod types;
-pub mod yaml;
 
 // Re-export main types
 pub use persistence::manager::PersistenceManager;

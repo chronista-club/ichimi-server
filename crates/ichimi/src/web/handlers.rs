@@ -633,11 +633,18 @@ pub async fn instantiate_template(
 pub async fn get_clipboard(
     State(state): State<AppState>,
 ) -> Result<Json<ClipboardResponse>, (StatusCode, String)> {
-    let item = state
+    let item_opt = state
         .persistence_manager
         .get_latest_clipboard_item()
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+
+    let item = item_opt.ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            "No clipboard items found".to_string(),
+        )
+    })?;
 
     Ok(Json(ClipboardResponse {
         id: item.clipboard_id,
@@ -762,11 +769,25 @@ pub async fn search_clipboard(
     Query(req): Query<SearchClipboardRequest>,
     State(state): State<AppState>,
 ) -> Result<Json<ClipboardHistoryResponse>, (StatusCode, String)> {
-    let items = state
+    // Simple search implementation using get_clipboard_history
+    let all_items = state
         .persistence_manager
-        .search_clipboard_items(&req.query, req.limit.unwrap_or(50))
+        .get_clipboard_history(req.limit.unwrap_or(50))
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+
+    // Filter items based on query
+    let items: Vec<_> = all_items
+        .into_iter()
+        .filter(|item| {
+            item.content.contains(&req.query)
+                || item
+                    .filename
+                    .as_ref()
+                    .is_some_and(|f| f.contains(&req.query))
+                || item.tags.iter().any(|tag| tag.contains(&req.query))
+        })
+        .collect();
 
     let response_items: Vec<ClipboardResponse> = items
         .into_iter()
